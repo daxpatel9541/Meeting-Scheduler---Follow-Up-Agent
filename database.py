@@ -166,17 +166,21 @@ def get_all_meetings():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
+    # Format current time to YYYY-MM-DD HH:MM to compare with DB
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
     cursor.execute('''
         SELECT m.*, 
         (SELECT GROUP_CONCAT(name || ' (' || status || ')') FROM participants p WHERE p.meeting_id = m.id) as participants_summary,
         CASE 
+            WHEN m.date || ' ' || m.time < ? THEN 'ended'
             WHEN EXISTS (SELECT 1 FROM participants p WHERE p.meeting_id = m.id AND p.status = 'declined') THEN 'declined'
             WHEN NOT EXISTS (SELECT 1 FROM participants p WHERE p.meeting_id = m.id AND p.status != 'accepted') THEN 'accepted'
             ELSE 'pending'
         END as status
         FROM meetings m
         ORDER BY m.date DESC, m.time DESC
-    ''')
+    ''', (now_str,))
     meetings = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return meetings

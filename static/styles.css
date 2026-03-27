@@ -229,6 +229,7 @@ td {
 .status-badge.pending { background: rgba(245, 158, 11, 0.1); color: var(--pending); }
 .status-badge.accepted { background: rgba(16, 185, 129, 0.1); color: var(--success); }
 .status-badge.declined { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+.status-badge.ended { background: rgba(148, 163, 184, 0.1); color: var(--text-muted); }
 
 /* Modals */
 .modal {
