@@ -1,0 +1,25 @@
+# Secrets and API Keys
+.env
+token.json
+credentials.json
+client_secret_*.json
+
+# Database
+scheduler.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+
+# Temporary files
+test_verify.py
+/tmp/
+*.tmp
+*.log

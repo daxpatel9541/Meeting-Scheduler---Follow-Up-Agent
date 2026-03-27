@@ -1,0 +1,18 @@
+runtime: python39
+
+instance_class: F1
+
+entrypoint: gunicorn -b :$PORT app:app
+
+env_variables:
+  # The server will automatically use these locally,
+  # but in GCP you should add them via the Cloud Console for security.
+  BASE_URL: "https://<YOUR-PROJECT-ID>.uc.r.appspot.com"
+
+# Static files for the dashboard
+handlers:
+- url: /static
+  static_dir: static
+
+- url: /.*
+  script: auto

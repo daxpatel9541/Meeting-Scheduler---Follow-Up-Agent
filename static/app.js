@@ -1,0 +1,468 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // --- State ---
+    let meetings = [];
+    let currentStep = 1;
+    let meetingMode = 'single'; // 'single' or 'group'
+    let selectedParticipants = [];
+    let allUsers = [];
+
+    // --- Elements ---
+    const totalMeetingsEl = document.getElementById('totalMeetings');
+    const upcomingMeetingsEl = document.getElementById('upcomingMeetings');
+    const acceptedMeetingsEl = document.getElementById('acceptedMeetings');
+    const declinedMeetingsEl = document.getElementById('declinedMeetings');
+    const meetingsBody = document.getElementById('meetingsBody');
+    const sidebarNav = document.getElementById('sidebarNav');
+    const sections = document.querySelectorAll('.section');
+    const navLinks = document.querySelectorAll('.nav-link');
+    const usersBody = document.getElementById('usersBody');
+
+    // Modals
+    const createModal = document.getElementById('createModal');
+    const detailsModal = document.getElementById('detailsModal');
+    const userModal = document.getElementById('userModal');
+
+    // Wizard Elements
+    const wizardSteps = document.querySelectorAll('.wizard-step');
+    const wizardBackBtn = document.getElementById('wizardBackBtn');
+    const wizardNextBtn = document.getElementById('wizardNextBtn');
+    const wizardSubmitBtn = document.getElementById('wizardSubmitBtn');
+    const singleUserList = document.getElementById('singleUserList');
+    const groupUserList = document.getElementById('groupUserList');
+    
+    // Form Fields
+    const meetTitle = document.getElementById('meetTitle');
+    const meetDate = document.getElementById('meetDate');
+    const meetAgenda = document.getElementById('meetAgenda');
+    
+    // Custom Time Picker
+    const timeHour = document.getElementById('timeHour');
+    const timeMinute = document.getElementById('timeMinute');
+    const timeAmpm = document.getElementById('timeAmpm');
+
+    // Buttons
+    const openModalBtn = document.getElementById('openModalBtn');
+    const openUserModalBtn = document.getElementById('openUserModalBtn');
+    const saveUserBtn = document.getElementById('saveUserBtn');
+
+    // UI Results
+    const creationResult = document.getElementById('creationResult');
+    const userResult = document.getElementById('userResult');
+    const userBtnText = document.getElementById('userBtnText');
+
+    // --- Initialization ---
+    initTimeDropdowns();
+    fetchDashboardData();
+    fetchUsers();
+
+    // --- Functions ---
+
+    function initTimeDropdowns() {
+        for (let i = 1; i <= 12; i++) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = i.toString().padStart(2, '0');
+            timeHour.appendChild(opt);
+        }
+        for (let i = 0; i < 60; i += 5) {
+            const opt = document.createElement('option');
+            opt.value = i;
+            opt.textContent = i.toString().padStart(2, '0');
+            timeMinute.appendChild(opt);
+        }
+    }
+
+    // --- Event Listeners ---
+    sidebarNav.onclick = (e) => {
+        const link = e.target.closest('.nav-link');
+        if (!link) return;
+        e.preventDefault();
+        const target = link.getAttribute('data-target');
+        navLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+        sections.forEach(s => {
+            s.classList.remove('active');
+            if (s.id === target + 'Section') s.classList.add('active');
+        });
+        if (target === 'dashboard') fetchDashboardData();
+        if (target === 'users') fetchUsers();
+    };
+
+    openModalBtn.onclick = () => {
+        resetWizard();
+        createModal.style.display = 'flex';
+    };
+    
+    openUserModalBtn.onclick = () => userModal.style.display = 'flex';
+    
+    document.querySelectorAll('.close, .close-modal').forEach(btn => {
+        btn.onclick = () => {
+            createModal.style.display = 'none';
+            detailsModal.style.display = 'none';
+            userModal.style.display = 'none';
+            creationResult.classList.add('hidden');
+            userResult.classList.add('hidden');
+        };
+    });
+
+    window.onclick = (event) => {
+        // Disabled backdrop-click for createModal to prevent accidental closure on mobile
+        // if (event.target == createModal) createModal.style.display = 'none';
+        if (event.target == detailsModal) detailsModal.style.display = 'none';
+        if (event.target == userModal) userModal.style.display = 'none';
+    };
+
+    // Wizard Logic
+    document.getElementById('modeSingle').onclick = () => { meetingMode = 'single'; showStep(2); };
+    document.getElementById('modeGroup').onclick = () => { meetingMode = 'group'; showStep(2); };
+
+    // Single User Search
+    const singleUserSearch = document.getElementById('singleUserSearch');
+    singleUserSearch.oninput = () => renderParticipantSelection(singleUserSearch.value.trim().toLowerCase());
+
+    wizardBackBtn.onclick = () => showStep(currentStep - 1);
+    wizardNextBtn.onclick = () => {
+        if (currentStep === 2) {
+            if (selectedParticipants.length === 0) {
+                alert('Please select at least one participant.');
+                return;
+            }
+        }
+        showStep(currentStep + 1);
+    };
+    wizardSubmitBtn.onclick = handleCreateMeeting;
+
+    saveUserBtn.onclick = handleAddUser;
+
+    // Search filter
+    const searchInput = document.querySelector('.search-bar input');
+    if (searchInput) {
+        searchInput.oninput = (e) => {
+            const query = e.target.value.toLowerCase();
+            const rows = meetingsBody.querySelectorAll('tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(query) ? '' : 'none';
+            });
+        };
+    }
+
+    // --- Core Functions ---
+
+    function resetWizard() {
+        currentStep = 1;
+        selectedParticipants = [];
+        meetTitle.value = '';
+        meetDate.value = '';
+        meetAgenda.value = '';
+        // Reset custom time
+        timeHour.selectedIndex = 0;
+        timeMinute.selectedIndex = 0;
+        timeAmpm.value = 'AM';
+        
+        creationResult.classList.add('hidden');
+        
+        const today = new Date().toISOString().split('T')[0];
+        meetDate.setAttribute('min', today);
+        
+        showStep(1);
+    }
+
+    function showStep(step) {
+        currentStep = step;
+        wizardSteps.forEach((s, i) => s.classList.toggle('active', i === step - 1));
+        
+        wizardBackBtn.style.display = step > 1 ? 'block' : 'none';
+        
+        if (step === 1) {
+            wizardNextBtn.style.display = 'none';
+            wizardSubmitBtn.style.display = 'none';
+        } else if (step === 2) {
+            wizardNextBtn.style.display = (meetingMode === 'group') ? 'block' : 'none';
+            wizardSubmitBtn.style.display = 'none';
+            renderParticipantSelection();
+        } else if (step === 3) {
+            wizardNextBtn.style.display = 'none';
+            wizardSubmitBtn.style.display = 'block';
+        }
+    }
+
+    function renderParticipantSelection(query = '') {
+        if (meetingMode === 'single') {
+            document.getElementById('selectionSingle').classList.remove('hidden');
+            document.getElementById('selectionGroup').classList.add('hidden');
+            singleUserList.innerHTML = '';
+            
+            const filtered = allUsers.filter(u => 
+                u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)
+            );
+
+            if (query && filtered.length > 0) {
+                filtered.forEach(u => {
+                    const div = document.createElement('div');
+                    div.className = 'user-select-item';
+                    div.innerHTML = `<span><strong>${u.name}</strong> (${u.email})</span>`;
+                    div.onclick = () => {
+                        selectedParticipants = [u];
+                        showStep(3);
+                    };
+                    singleUserList.appendChild(div);
+                });
+            } else if (query) {
+                singleUserList.innerHTML = '<p class="modal-hint">No matches found.</p>';
+            } else {
+                singleUserList.innerHTML = '<p class="modal-hint">Start typing to find a person...</p>';
+            }
+        } else {
+            document.getElementById('selectionSingle').classList.add('hidden');
+            document.getElementById('selectionGroup').classList.remove('hidden');
+            groupUserList.innerHTML = '';
+            allUsers.forEach(u => {
+                const div = document.createElement('div');
+                div.className = 'user-check-item';
+                div.innerHTML = `
+                    <input type="checkbox" id="user_${u.email}" value="${u.email}" 
+                           ${selectedParticipants.find(p => p.email === u.email) ? 'checked' : ''}>
+                    <label for="user_${u.email}"><strong>${u.name}</strong> (${u.email})</label>
+                `;
+                div.onclick = (e) => {
+                    if (e.target.tagName === 'INPUT') {
+                        if (e.target.checked) selectedParticipants.push(u);
+                        else selectedParticipants = selectedParticipants.filter(p => p.email !== u.email);
+                    }
+                };
+                groupUserList.appendChild(div);
+            });
+        }
+    }
+
+    async function fetchDashboardData() {
+        try {
+            // 1. Fetch and render current DB data immediately (Fast)
+            const [summaryRes, meetingsRes] = await Promise.all([
+                fetch('/api/summary'),
+                fetch('/api/meetings')
+            ]);
+            updateSummaryCards(await summaryRes.json());
+            renderMeetingsTable(await meetingsRes.json());
+            
+            // 2. Trigger sync in background (Slow) - don't await
+            fetch('/api/sync-responses')
+                .then(res => res.json())
+                .then(result => {
+                    if (result.success && result.synced > 0) {
+                        // Refresh data again if any status changed
+                        fetchDashboardDataOnly();
+                    }
+                });
+        } catch (err) { console.error('Data fetch error:', err); }
+    }
+
+    async function fetchDashboardDataOnly() {
+        try {
+            const [summaryRes, meetingsRes] = await Promise.all([
+                fetch('/api/summary'),
+                fetch('/api/meetings')
+            ]);
+            updateSummaryCards(await summaryRes.json());
+            renderMeetingsTable(await meetingsRes.json());
+        } catch (err) { console.error('Data refresh error:', err); }
+    }
+
+    async function fetchUsers() {
+        try {
+            const res = await fetch('/api/users');
+            allUsers = await res.json();
+            renderUsersTable(allUsers);
+        } catch (err) { console.error('User fetch error:', err); }
+    }
+
+    function updateSummaryCards(summary) {
+        totalMeetingsEl.innerText = summary.total;
+        upcomingMeetingsEl.innerText = summary.upcoming;
+        acceptedMeetingsEl.innerText = summary.accepted;
+        declinedMeetingsEl.innerText = summary.declined;
+    }
+
+    function formatTime(time24) {
+        if (!time24) return '';
+        const [hours, minutes] = time24.split(':');
+        let h = parseInt(hours);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${minutes} ${ampm}`;
+    }
+
+    function renderMeetingsTable(data) {
+        meetingsBody.innerHTML = '';
+        data.forEach(m => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${m.title}</strong></td>
+                <td><span class="text-muted">${m.participants_summary || 'None'}</span></td>
+                <td>${m.date} | ${formatTime(m.time)}</td>
+                <td><a href="${m.meet_link}" target="_blank" class="meet-link"><i class="fas fa-video"></i> Join</a></td>
+                <td><span class="status-badge ${m.status}">${m.status.charAt(0).toUpperCase() + m.status.slice(1)}</span></td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-secondary btn-icon" title="View Details" onclick="viewDetails(${m.id})"><i class="fas fa-eye"></i></button>
+                        <button class="btn btn-secondary btn-icon" title="Copy Link" onclick="copyLink('${m.meet_link}')"><i class="fas fa-copy"></i></button>
+                        <button class="btn btn-secondary btn-icon delete-btn" title="Delete Meeting" onclick="handleDeleteMeeting(${m.id})"><i class="fas fa-trash"></i></button>
+                    </div>
+                </td>
+            `;
+            meetingsBody.appendChild(row);
+        });
+    }
+
+    window.handleDeleteMeeting = async (id) => {
+        if (!confirm('Are you sure you want to delete this meeting? This will also cancel the Google Calendar event.')) return;
+        
+        try {
+            const res = await fetch(`/api/meetings/${id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) {
+                fetchDashboardData();
+            } else {
+                alert('Failed to delete meeting: ' + (result.error || 'Unknown error'));
+            }
+        } catch (err) { alert('Connection error'); }
+    };
+
+    function renderUsersTable(data) {
+        usersBody.innerHTML = '';
+        data.forEach(u => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${u.name}</strong></td>
+                <td>${u.email}</td>
+                <td>
+                    <button class="btn btn-secondary btn-icon delete-btn" onclick="handleDeleteUser('${u.email}')">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            usersBody.appendChild(row);
+        });
+    }
+
+    async function handleCreateMeeting() {
+        const title = meetTitle.value.trim();
+        const date = meetDate.value;
+        const agenda = meetAgenda.value.trim();
+
+        // Construct 24h time from dropdowns
+        let h = parseInt(timeHour.value);
+        const m = timeMinute.value.padStart(2, '0');
+        const ampm = timeAmpm.value;
+        
+        if (ampm === 'PM' && h < 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        const timeVal = `${h.toString().padStart(2, '0')}:${m}`;
+
+        if (!title || !date || !agenda) {
+            alert('Please fill all fields, including the agenda.');
+            return;
+        }
+
+        wizardSubmitBtn.disabled = true;
+        document.getElementById('btnSpinner').classList.remove('hidden');
+
+        try {
+            const res = await fetch('/api/create-meeting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title,
+                    date,
+                    time: timeVal,
+                    agenda,
+                    participants: selectedParticipants
+                })
+            });
+            const result = await res.json();
+            if (result.success) {
+                creationResult.innerText = '✅ Meeting created!';
+                creationResult.className = 'result-msg msg-success';
+                fetchDashboardData();
+                setTimeout(() => createModal.style.display = 'none', 1500);
+            } else {
+                creationResult.innerText = '❌ ' + (result.error || 'Error');
+                creationResult.className = 'result-msg msg-error';
+            }
+        } catch (err) { creationResult.innerText = '❌ Connection failed.'; }
+        finally { 
+            creationResult.classList.remove('hidden'); 
+            wizardSubmitBtn.disabled = false; 
+            document.getElementById('btnSpinner').classList.add('hidden');
+        }
+    }
+
+    async function handleAddUser() {
+        const name = document.getElementById('userName').value.trim();
+        const email = document.getElementById('userEmail').value.trim();
+        if (!name || !email) return;
+
+        userBtnText.innerText = 'Adding...';
+        saveUserBtn.disabled = true;
+
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email })
+            });
+            const result = await res.json();
+            if (result.success) {
+                userResult.innerText = '✅ User added!';
+                userResult.className = 'result-msg msg-success';
+                document.getElementById('userName').value = '';
+                document.getElementById('userEmail').value = '';
+                fetchUsers();
+                setTimeout(() => userModal.style.display = 'none', 1000);
+            } else {
+                userResult.innerText = '❌ Failed (Check if email exists)';
+                userResult.className = 'result-msg msg-error';
+            }
+        } catch (err) { userResult.innerText = '❌ Error adding user.'; }
+        finally { userResult.classList.remove('hidden'); userBtnText.innerText = 'Add User'; saveUserBtn.disabled = false; }
+    }
+
+    window.handleDeleteUser = async (email) => {
+        if (!confirm(`Delete ${email}?`)) return;
+        try {
+            await fetch(`/api/users/${email}`, { method: 'DELETE' });
+            fetchUsers();
+        } catch (err) { alert('Delete failed'); }
+    }
+
+    window.viewDetails = async (id) => {
+        const res = await fetch(`/api/meetings/${id}`);
+        const data = await res.json();
+        const m = data.meeting;
+        const p = data.participants;
+        document.getElementById('detailBody').innerHTML = `
+            <div class="detail-section">
+                <p><strong>Title:</strong> ${m.title}</p>
+                <p><strong>Date & Time:</strong> ${m.date} at ${formatTime(m.time)}</p>
+                <p><strong>Agenda:</strong></p>
+                <div class="agenda-box">${m.agenda.replace(/\n/g, '<br>')}</div>
+            </div>
+            <h3>Participants</h3>
+            <div class="participant-list">
+                ${p.map(part => `
+                    <div class="participant-item">
+                        <span>${part.name} (${part.email})</span>
+                        <span class="status-badge ${part.status}">${part.status.toUpperCase()}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        detailsModal.style.display = 'flex';
+    };
+
+    window.copyLink = (link) => {
+        navigator.clipboard.writeText(link);
+        alert('Copied!');
+    };
+});

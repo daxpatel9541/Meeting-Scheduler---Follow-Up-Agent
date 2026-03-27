@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaS Meeting Scheduler | Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">
+            <i class="fas fa-calendar-alt"></i>
+            <span>Scheduler AI</span>
+        </div>
+        <nav id="sidebarNav">
+            <a href="#" class="nav-link active" data-target="dashboard"><i class="fas fa-th-large"></i> Dashboard</a>
+            <a href="#" class="nav-link" data-target="users"><i class="fas fa-users"></i> Users</a>
+        </nav>
+    </div>
+
+    <main class="main-content">
+        <header>
+            <div class="header-title">
+                <h1>Overview</h1>
+                <p>Track and manage your scheduled meetings in real-time.</p>
+            </div>
+            <button class="btn btn-primary" id="openModalBtn">
+                <i class="fas fa-plus"></i> New Meeting
+            </button>
+        </header>
+
+        <div id="dashboardSection" class="section active">
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon total"><i class="fas fa-calendar"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Total Meetings</span>
+                        <h2 id="totalMeetings">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon upcoming"><i class="fas fa-clock"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Upcoming</span>
+                        <h2 id="upcomingMeetings">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon accepted"><i class="fas fa-check-circle"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Accepted</span>
+                        <h2 id="acceptedMeetings">0</h2>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon declined"><i class="fas fa-times-circle"></i></div>
+                    <div class="stat-info">
+                        <span class="stat-label">Declined</span>
+                        <h2 id="declinedMeetings">0</h2>
+                    </div>
+                </div>
+            </section>
+
+            <section class="meeting-list glass">
+                <div class="section-header">
+                    <h2>Recent Meetings</h2>
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Search meetings...">
+                    </div>
+                </div>
+                <table id="meetingsTable">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Participants</th>
+                            <th>Date & Time</th>
+                            <th>Meet Link</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="meetingsBody">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+
+        <div id="usersSection" class="section">
+            <section class="glass">
+                <div class="section-header">
+                    <h2>Registered Users</h2>
+                    <button class="btn btn-primary" id="openUserModalBtn">
+                        <i class="fas fa-user-plus"></i> Add User
+                    </button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th style="width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersBody">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+
+    <!-- Create Meeting Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2>Create New Meeting</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: Mode Selection -->
+                <div id="wizardStep1" class="wizard-step active">
+                    <p class="modal-hint">Select the type of meeting you want to host.</p>
+                    <div class="mode-selection">
+                        <button class="mode-btn" id="modeSingle">
+                            <i class="fas fa-user"></i>
+                            <span>Single Person</span>
+                            <p>One-on-one meeting with a specific person.</p>
+                        </button>
+                        <button class="mode-btn" id="modeGroup">
+                            <i class="fas fa-users"></i>
+                            <span>Group Meeting</span>
+                            <p>Invite multiple participants from your database.</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Participant Selection -->
+                <div id="wizardStep2" class="wizard-step">
+                    <div id="selectionSingle" class="hidden">
+                        <p class="modal-hint">Search for a person in your database.</p>
+                        <div class="search-bar" style="margin-bottom: 1.5rem;">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="singleUserSearch" placeholder="Type name or email...">
+                        </div>
+                        <div class="user-select-list" id="singleUserList">
+                            <!-- Filtered User List -->
+                        </div>
+                    </div>
+                    <div id="selectionGroup" class="hidden">
+                        <p class="modal-hint">Select multiple participants for the group meeting.</p>
+                        <div class="user-check-list" id="groupUserList">
+                            <!-- Dynamic User Checklist -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Meeting Details -->
+                <div id="wizardStep3" class="wizard-step">
+                    <p class="modal-hint">Enter the final details for your meeting.</p>
+                    <div class="form-group">
+                        <label>Meeting Title</label>
+                        <input type="text" id="meetTitle" placeholder="e.g. Project Sync">
+                    </div>
+                    <div class="flex-row">
+                        <div class="form-group">
+                            <label>Date</label>
+                            <input type="date" id="meetDate">
+                        </div>
+                        <div class="form-group">
+                            <label>Time</label>
+                            <div class="time-picker-custom">
+                                <select id="timeHour"></select>
+                                <span class="time-sep">:</span>
+                                <select id="timeMinute"></select>
+                                <select id="timeAmpm">
+                                    <option value="AM">AM</option>
+                                    <option value="PM">PM</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Agenda (Mandatory)</label>
+                        <textarea id="meetAgenda" placeholder="What will be discussed?"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer wizard-footer">
+                    <button class="btn btn-secondary" id="wizardBackBtn" style="display: none;">Back</button>
+                    <button class="btn btn-primary" id="wizardNextBtn" style="display: none;">Next</button>
+                    <button class="btn btn-primary" id="wizardSubmitBtn" style="display: none;">
+                        <span id="btnText">Create Meeting</span>
+                        <div id="btnSpinner" class="spinner hidden"></div>
+                    </button>
+                </div>
+                <div id="creationResult" class="result-msg hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="detailsModal" class="modal">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2 id="detailTitle">Meeting Details</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="detailBody">
+                <!-- Dynamic Content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <!-- Add User Modal -->
+    <div id="userModal" class="modal">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2>Add New User</h2>
+                <span class="close" id="closeUserModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="userName">Full Name</label>
+                    <input type="text" id="userName" placeholder="e.g. John Doe">
+                </div>
+                <div class="form-group">
+                    <label for="userEmail">Email Address</label>
+                    <input type="email" id="userEmail" placeholder="e.g. john@example.com">
+                </div>
+                <div id="userResult" class="result-msg hidden"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-modal" id="cancelUserBtn">Cancel</button>
+                <button class="btn btn-primary" id="saveUserBtn">
+                    <span id="userBtnText">Add User</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
