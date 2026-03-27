@@ -29,6 +29,21 @@
             <button class="btn btn-primary" id="openModalBtn">
                 <i class="fas fa-plus"></i> New Meeting
             </button>
+            <div class="notif-wrapper" id="notifWrapper">
+                <button class="btn btn-secondary btn-icon notif-bell" id="notifBellBtn" title="Notifications">
+                    <i class="fas fa-bell"></i>
+                    <span class="notif-badge hidden" id="notifBadge">0</span>
+                </button>
+                <div class="notif-dropdown hidden" id="notifDropdown">
+                    <div class="notif-dropdown-header">
+                        <span>Notifications</span>
+                        <button class="notif-clear-btn" id="notifClearBtn">Clear</button>
+                    </div>
+                    <div class="notif-dropdown-body" id="notifDropdownBody">
+                        <p class="notif-empty">No new notifications</p>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <div id="dashboardSection" class="section active">

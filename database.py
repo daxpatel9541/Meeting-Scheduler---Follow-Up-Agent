@@ -64,6 +64,16 @@ def init_db():
         cursor.execute("ALTER TABLE meetings ADD COLUMN scheduled_send_time TIMESTAMP")
     except sqlite3.OperationalError:
         pass # Column already exists
+    
+    # 5. Notifications table for real-time dashboard alerts
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            seen INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
         
     conn.commit()
     conn.close()
@@ -120,7 +130,7 @@ def create_meeting_db(event_id, title, date, time, meet_link, agenda, participan
         conn.close()
 
 def update_participant_status(meeting_id, email, status):
-    """Update a specific participant's response status."""
+    """Update a specific participant's response status and generate a notification."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -128,6 +138,23 @@ def update_participant_status(meeting_id, email, status):
         SET status = ? 
         WHERE meeting_id = ? AND email = ?
     ''', (status, meeting_id, email))
+    
+    # Generate a dashboard notification for this RSVP event
+    try:
+        cursor.execute('SELECT name FROM participants WHERE meeting_id = ? AND email = ?', (meeting_id, email))
+        name_row = cursor.fetchone()
+        pname = name_row[0] if name_row else email
+        
+        cursor.execute('SELECT title FROM meetings WHERE id = ?', (meeting_id,))
+        title_row = cursor.fetchone()
+        mtitle = title_row[0] if title_row else f'Meeting #{meeting_id}'
+        
+        emoji = '✅' if status == 'accepted' else ('❌' if status == 'declined' else '⏳')
+        msg = f"{emoji} {pname} has {status} the meeting: {mtitle}"
+        add_notification(msg)
+    except Exception as e:
+        print(f"[DATABASE] Notification generation error: {e}")
+    
     conn.commit()
     conn.close()
 
@@ -369,6 +396,44 @@ def increment_followup(participant_id):
     ''', (now_str, participant_id))
     conn.commit()
     conn.close()
+
+# --- Notification Helpers ---
+
+def add_notification(message):
+    """Insert a new unseen notification into the database."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('INSERT INTO notifications (message, seen, created_at) VALUES (?, 0, ?)', (message, now_str))
+    conn.commit()
+    conn.close()
+    print(f"[NOTIFICATION] Created: {message}")
+
+def get_unseen_notifications():
+    """Fetch all unseen notifications and mark them as seen."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM notifications WHERE seen = 0 ORDER BY created_at DESC')
+    notifications = [dict(row) for row in cursor.fetchall()]
+    
+    if notifications:
+        ids = [n['id'] for n in notifications]
+        cursor.execute(f'UPDATE notifications SET seen = 1 WHERE id IN ({",".join("?" * len(ids))})', ids)
+        conn.commit()
+    
+    conn.close()
+    return notifications
+
+def get_recent_notifications(limit=20):
+    """Fetch the most recent notifications (both seen and unseen) for the dropdown."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM notifications ORDER BY created_at DESC LIMIT ?', (limit,))
+    notifications = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return notifications
 
 if __name__ == "__main__":
     init_db()

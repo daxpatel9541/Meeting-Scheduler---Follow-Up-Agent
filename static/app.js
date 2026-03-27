@@ -60,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTimeDropdowns();
     fetchDashboardData();
     fetchUsers();
+    initNotifications();
 
     // --- Functions ---
 
@@ -546,4 +547,146 @@ document.addEventListener('DOMContentLoaded', () => {
         navigator.clipboard.writeText(link);
         alert('Copied!');
     };
+
+    // =============================================
+    // --- Real-Time Notification System ---
+    // =============================================
+
+    const seenNotifIds = new Set();
+    let notifUnreadCount = 0;
+    let notifDropdownOpen = false;
+
+    function initNotifications() {
+        // 1. Request browser notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().then(perm => {
+                console.log('[NOTIF] Permission:', perm);
+            });
+        }
+
+        // 2. Bell click toggle
+        const bellBtn = document.getElementById('notifBellBtn');
+        const dropdown = document.getElementById('notifDropdown');
+
+        bellBtn.onclick = (e) => {
+            e.stopPropagation();
+            notifDropdownOpen = !notifDropdownOpen;
+            dropdown.classList.toggle('hidden', !notifDropdownOpen);
+            if (notifDropdownOpen) {
+                loadRecentNotifications();
+            }
+        };
+
+        // Close dropdown on outside click
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('notifWrapper').contains(e.target)) {
+                dropdown.classList.add('hidden');
+                notifDropdownOpen = false;
+            }
+        });
+
+        // Clear button
+        document.getElementById('notifClearBtn').onclick = () => {
+            document.getElementById('notifDropdownBody').innerHTML = '<p class="notif-empty">No new notifications</p>';
+            notifUnreadCount = 0;
+            updateBadge();
+        };
+
+        // 3. Start polling every 5 seconds
+        pollNotifications();
+        setInterval(pollNotifications, 5000);
+    }
+
+    async function pollNotifications() {
+        try {
+            const res = await fetch('/api/notifications');
+            const data = await res.json();
+
+            if (data.notifications && data.notifications.length > 0) {
+                data.notifications.forEach(n => {
+                    if (!seenNotifIds.has(n.id)) {
+                        seenNotifIds.add(n.id);
+                        notifUnreadCount++;
+                        showBrowserNotification(n.message);
+                        prependToDropdown(n);
+                    }
+                });
+                updateBadge();
+            }
+        } catch (err) {
+            // Silently fail — don't break the UI
+            console.warn('[NOTIF] Poll error:', err);
+        }
+    }
+
+    function showBrowserNotification(message) {
+        if ('Notification' in window && Notification.permission === 'granted') {
+            try {
+                new Notification('Scheduler AI', {
+                    body: message,
+                    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📅</text></svg>',
+                    tag: 'scheduler-' + Date.now()
+                });
+            } catch (e) {
+                console.warn('[NOTIF] Browser notification failed:', e);
+            }
+        }
+    }
+
+    function prependToDropdown(notif) {
+        const body = document.getElementById('notifDropdownBody');
+        // Remove empty message if present
+        const emptyMsg = body.querySelector('.notif-empty');
+        if (emptyMsg) emptyMsg.remove();
+
+        const div = document.createElement('div');
+        div.className = 'notif-item unseen';
+        const timeStr = notif.created_at ? notif.created_at.split(' ')[1] || '' : '';
+        div.innerHTML = `
+            ${notif.message}
+            <span class="notif-time">${timeStr}</span>
+        `;
+        body.prepend(div);
+    }
+
+    function updateBadge() {
+        const badge = document.getElementById('notifBadge');
+        if (notifUnreadCount > 0) {
+            badge.textContent = notifUnreadCount > 99 ? '99+' : notifUnreadCount;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    }
+
+    async function loadRecentNotifications() {
+        try {
+            const res = await fetch('/api/notifications/recent');
+            const data = await res.json();
+            const body = document.getElementById('notifDropdownBody');
+
+            if (data.notifications && data.notifications.length > 0) {
+                body.innerHTML = '';
+                data.notifications.forEach(n => {
+                    seenNotifIds.add(n.id);
+                    const div = document.createElement('div');
+                    div.className = 'notif-item' + (n.seen === 0 ? ' unseen' : '');
+                    const timeStr = n.created_at ? n.created_at.split(' ')[1] || '' : '';
+                    div.innerHTML = `
+                        ${n.message}
+                        <span class="notif-time">${timeStr}</span>
+                    `;
+                    body.appendChild(div);
+                });
+            } else {
+                body.innerHTML = '<p class="notif-empty">No notifications yet</p>';
+            }
+
+            // Reset badge when user opens dropdown
+            notifUnreadCount = 0;
+            updateBadge();
+        } catch (err) {
+            console.warn('[NOTIF] Load recent error:', err);
+        }
+    }
 });

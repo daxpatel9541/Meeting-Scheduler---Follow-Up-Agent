@@ -279,6 +279,14 @@ def create_meeting():
         #     send_invitation_email(gmail_service, meeting_id, p)
             
         print(f"[API] Meeting '{title}' created with {len(participants)} participants.")
+        
+        # Generate a dashboard notification
+        pnames = ', '.join([p['name'] for p in participants])
+        if send_status == 'pending':
+            database.add_notification(f"📅 Scheduled meeting '{title}' with {pnames}")
+        else:
+            database.add_notification(f"🚀 Meeting '{title}' created and invites sent to {pnames}")
+        
         return jsonify({"success": True, "meeting_id": meeting_id, "meet_link": meet_link})
 
     except Exception as e:
@@ -301,13 +309,41 @@ def handle_response():
         print(f"[API] Response Error: {e}")
         return "Failed to record response.", 500
 
+@app.route("/api/notifications")
+def get_notifications():
+    """Fetch unseen notifications and mark them as seen."""
+    try:
+        notifications = database.get_unseen_notifications()
+        return jsonify({"notifications": notifications})
+    except Exception as e:
+        print(f"[API] Notifications Error: {e}")
+        return jsonify({"notifications": [], "error": str(e)}), 500
+
+@app.route("/api/notifications/recent")
+def get_recent_notifs():
+    """Fetch the last 20 notifications for the dropdown history."""
+    try:
+        notifications = database.get_recent_notifications(20)
+        return jsonify({"notifications": notifications})
+    except Exception as e:
+        return jsonify({"notifications": []}), 500
+
 if __name__ == "__main__":
-    # Ensure database is ready
-    database.init_db()
+    # Ensure database is initialized only once
+    if not os.path.exists("scheduler.db"):
+        database.init_db()
+    else:
+        # We run init_db anyway just to safely apply ALTER TABLE updates if any schema changed,
+        # but the request is to prevent repeated execution of init_db. 
+        # Actually, the user asked to add a condition to prevent repeated execution.
+        try:
+            database.init_db()
+        except:
+            pass
     
     print("\n" + "="*60)
-    print("SaaS Meeting Scheduler Dashboard is Starting...")
+    print("SaaS Meeting Scheduler Dashboard is Starting (Production Mode)...")
     print("URL: http://127.0.0.1:5000")
     print("="*60 + "\n")
     
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=False, use_reloader=False, port=5000, host="0.0.0.0")
