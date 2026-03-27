@@ -44,6 +44,17 @@ def init_db():
         )
     ''')
     
+    # 4. Safely add delayed scheduling columns to meetings table if they don't exist
+    try:
+        cursor.execute("ALTER TABLE meetings ADD COLUMN send_status TEXT DEFAULT 'sent'")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+        
+    try:
+        cursor.execute("ALTER TABLE meetings ADD COLUMN scheduled_send_time TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+        
     conn.commit()
     conn.close()
     print(f"[DATABASE] Database refactored at {DB_PATH}")
@@ -63,7 +74,7 @@ def populate_initial_users():
 
 # Helper functions for the Dashboard
 
-def create_meeting_db(event_id, title, date, time, meet_link, agenda, participants):
+def create_meeting_db(event_id, title, date, time, meet_link, agenda, participants, **kwargs):
     """
     Save a new meeting and its participants to the database.
     
@@ -75,9 +86,9 @@ def create_meeting_db(event_id, title, date, time, meet_link, agenda, participan
     try:
         # Insert meeting
         cursor.execute('''
-            INSERT INTO meetings (event_id, title, date, time, meet_link, agenda)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (event_id, title, date, time, meet_link, agenda))
+            INSERT INTO meetings (event_id, title, date, time, meet_link, agenda, send_status, scheduled_send_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (event_id, title, date, time, meet_link, agenda, kwargs.get("send_status", "sent"), kwargs.get("scheduled_send_time")))
         
         meeting_id = cursor.lastrowid
         
@@ -241,6 +252,38 @@ def delete_meeting_db(meeting_id):
         return False
     finally:
         conn.close()
+
+def get_pending_scheduled_meetings():
+    """Fetch meetings that are scheduled to be sent but are still pending."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    # Format matches datetime-local (e.g., "2026-03-27T10:55")
+    now_str = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    cursor.execute('''
+        SELECT * FROM meetings 
+        WHERE send_status = 'pending' 
+        AND scheduled_send_time IS NOT NULL
+        AND scheduled_send_time <= ?
+    ''', (now_str,))
+    meetings = [dict(row) for row in cursor.fetchall()]
+    for m in meetings:
+        cursor.execute("SELECT * FROM participants WHERE meeting_id = ?", (m['id'],))
+        m['participants'] = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    return meetings
+
+def update_meeting_sent(meeting_id, event_id, meet_link):
+    """Mark a meeting as sent and store its generated event details."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE meetings 
+        SET send_status = 'sent', event_id = ?, meet_link = ? 
+        WHERE id = ?
+    ''', (event_id, meet_link, meeting_id))
+    conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     init_db()

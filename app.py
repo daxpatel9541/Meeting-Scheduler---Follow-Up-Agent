@@ -2,6 +2,8 @@ import os
 import uuid
 import base64
 from datetime import datetime
+import threading
+import time
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
@@ -72,6 +74,40 @@ def send_invitation_email(gmail_service, meeting_id, participant):
     except Exception as e:
         print(f"[GMAIL] Failed to send email to {email}: {e}")
         return False
+
+# --- Background Scheduler ---
+
+def process_scheduled_emails():
+    """Background thread to process delayed emails/invites."""
+    while True:
+        try:
+            pending_meetings = database.get_pending_scheduled_meetings()
+            if pending_meetings:
+                # We need a new service instance for the thread
+                calendar_service = get_calendar_service()
+                
+                for m in pending_meetings:
+                    emails = [p['email'] for p in m['participants']]
+                    print(f"[SCHEDULER] Processing delayed invite for '{m['title']}'")
+                    try:
+                        event_id, meet_link = calendar_tool.create_meeting(
+                            calendar_service,
+                            emails=emails,
+                            date=m['date'],
+                            time=m['time'],
+                            title=m['title'],
+                            agenda=m['agenda']
+                        )
+                        database.update_meeting_sent(m['id'], event_id, meet_link)
+                        print(f"[SCHEDULER] Successfully sent delayed invite for '{m['title']}'")
+                    except Exception as e:
+                        print(f"[SCHEDULER] Failed to send delayed invite for {m['id']}: {e}")
+        except Exception as e:
+            print(f"[SCHEDULER] Error in background loop: {e}")
+            
+        time.sleep(60) # Check every 60 seconds
+
+threading.Thread(target=process_scheduled_emails, daemon=True).start()
 
 # --- API Routes ---
 
@@ -172,16 +208,24 @@ def create_meeting():
     try:
         emails_for_calendar = [p["email"] for p in participants]
         
-        # 1. Create Calendar Event
-        calendar_service = get_calendar_service()
-        event_id, meet_link = calendar_tool.create_meeting(
-            calendar_service,
-            emails=emails_for_calendar,
-            date=date,
-            time=time,
-            title=title,
-            agenda=agenda
-        )
+        send_status = data.get("send_status", "sent")
+        scheduled_send_time = data.get("scheduled_send_time")
+        
+        event_id = None
+        meet_link = "Pending (Scheduled for later)"
+        
+        if send_status == "sent":
+            # 1. Create Calendar Event immediately
+            calendar_service = get_calendar_service()
+            event_id, mock_meet_link = calendar_tool.create_meeting(
+                calendar_service,
+                emails=emails_for_calendar,
+                date=date,
+                time=time,
+                title=title,
+                agenda=agenda
+            )
+            meet_link = mock_meet_link
         
         # 2. Save to Database
         meeting_id = database.create_meeting_db(
@@ -191,7 +235,9 @@ def create_meeting():
             time=time,
             meet_link=meet_link,
             agenda=agenda,
-            participants=participants
+            participants=participants,
+            send_status=send_status,
+            scheduled_send_time=scheduled_send_time
         )
         
         # 3. Send Emails (Disabled to prevent duplicate. Google sends the official invitation automatically.)

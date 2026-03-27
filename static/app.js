@@ -39,6 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeHour = document.getElementById('timeHour');
     const timeMinute = document.getElementById('timeMinute');
     const timeAmpm = document.getElementById('timeAmpm');
+    
+    // Custom Delivery Picker
+    const delayDate = document.getElementById('delayDate');
+    const delayHour = document.getElementById('delayHour');
+    const delayMinute = document.getElementById('delayMinute');
+    const delayAmpm = document.getElementById('delayAmpm');
 
     // Buttons
     const openModalBtn = document.getElementById('openModalBtn');
@@ -60,15 +66,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function initTimeDropdowns() {
         for (let i = 1; i <= 12; i++) {
             const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = i.toString().padStart(2, '0');
+            opt.value = i; opt.textContent = i.toString().padStart(2, '0');
             timeHour.appendChild(opt);
+            
+            const opt2 = document.createElement('option');
+            opt2.value = i; opt2.textContent = i.toString().padStart(2, '0');
+            delayHour.appendChild(opt2);
         }
         for (let i = 0; i < 60; i += 5) {
             const opt = document.createElement('option');
-            opt.value = i;
-            opt.textContent = i.toString().padStart(2, '0');
+            opt.value = i; opt.textContent = i.toString().padStart(2, '0');
             timeMinute.appendChild(opt);
+            
+            const opt2 = document.createElement('option');
+            opt2.value = i; opt2.textContent = i.toString().padStart(2, '0');
+            delayMinute.appendChild(opt2);
         }
     }
 
@@ -160,10 +172,18 @@ document.addEventListener('DOMContentLoaded', () => {
         timeMinute.selectedIndex = 0;
         timeAmpm.value = 'AM';
         
+        document.getElementById('emailDeliveryMode').value = 'instant';
+        document.getElementById('customDeliveryTime').classList.add('hidden');
+        delayDate.value = '';
+        delayHour.selectedIndex = 0;
+        delayMinute.selectedIndex = 0;
+        delayAmpm.value = 'AM';
+        
         creationResult.classList.add('hidden');
         
         const today = new Date().toISOString().split('T')[0];
         meetDate.setAttribute('min', today);
+        delayDate.setAttribute('min', today);
         
         showStep(1);
     }
@@ -296,12 +316,42 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderMeetingsTable(data) {
         meetingsBody.innerHTML = '';
         data.forEach(m => {
+            let meetLinkHtml = '';
+            
+            if (m.send_status === 'pending' && m.scheduled_send_time) {
+                // Parse the local time (YYYY-MM-DDTHH:MM)
+                const scheduledDate = new Date(m.scheduled_send_time);
+                const now = new Date();
+                
+                if (scheduledDate > now) {
+                    const diffMs = scheduledDate - now;
+                    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+                    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                    
+                    let timeLeft = '';
+                    if (diffHrs > 24) {
+                        timeLeft = `in ${Math.floor(diffHrs/24)}d ${diffHrs%24}h`;
+                    } else if (diffHrs > 0) {
+                        timeLeft = `in ${diffHrs}h ${diffMins}m`;
+                    } else {
+                        timeLeft = `in ${diffMins}m`;
+                    }
+                    meetLinkHtml = `<span style="color: #F59E0B; font-size: 0.9em;"><i class="fas fa-clock"></i> Sends ${timeLeft}</span>`;
+                } else {
+                    meetLinkHtml = `<span style="color: #F59E0B; font-size: 0.9em;"><i class="fas fa-spinner fa-spin"></i> Sending now...</span>`;
+                }
+            } else if (m.meet_link && m.meet_link.startsWith('http')) {
+                meetLinkHtml = `<a href="${m.meet_link}" target="_blank" class="meet-link"><i class="fas fa-video"></i> Join</a>`;
+            } else {
+                meetLinkHtml = `<span class="text-muted">${m.meet_link || 'N/A'}</span>`;
+            }
+
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td><strong>${m.title}</strong></td>
                 <td><span class="text-muted">${m.participants_summary || 'None'}</span></td>
                 <td>${m.date} | ${formatTime(m.time)}</td>
-                <td><a href="${m.meet_link}" target="_blank" class="meet-link"><i class="fas fa-video"></i> Join</a></td>
+                <td>${meetLinkHtml}</td>
                 <td><span class="status-badge ${m.status}">${m.status.charAt(0).toUpperCase() + m.status.slice(1)}</span></td>
                 <td>
                     <div class="action-buttons">
@@ -360,6 +410,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (ampm === 'AM' && h === 12) h = 0;
         const timeVal = `${h.toString().padStart(2, '0')}:${m}`;
 
+        const deliveryMode = document.getElementById('emailDeliveryMode').value;
+        let scheduledTime = null;
+
+        if (deliveryMode === 'custom') {
+            const dDate = delayDate.value;
+            let dH = parseInt(delayHour.value);
+            const dM = delayMinute.value.padStart(2, '0');
+            const dAmpm = delayAmpm.value;
+            
+            if (!dDate) {
+                alert('Please select a custom date for the email delivery.');
+                return;
+            }
+            
+            if (dAmpm === 'PM' && dH < 12) dH += 12;
+            if (dAmpm === 'AM' && dH === 12) dH = 0;
+            const dTimeVal = `${dH.toString().padStart(2, '0')}:${dM}`;
+            
+            scheduledTime = `${dDate}T${dTimeVal}`;
+        }
+
         if (!title || !date || !agenda) {
             alert('Please fill all fields, including the agenda.');
             return;
@@ -377,7 +448,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     date,
                     time: timeVal,
                     agenda,
-                    participants: selectedParticipants
+                    participants: selectedParticipants,
+                    send_status: deliveryMode === 'custom' ? 'pending' : 'sent',
+                    scheduled_send_time: deliveryMode === 'custom' ? scheduledTime : null
                 })
             });
             const result = await res.json();

@@ -187,6 +187,32 @@
                         <label>Agenda (Mandatory)</label>
                         <textarea id="meetAgenda" placeholder="What will be discussed?"></textarea>
                     </div>
+                    <div class="form-group">
+                        <label>Email Delivery Timer</label>
+                        <select id="emailDeliveryMode" onchange="document.getElementById('customDeliveryTime').classList.toggle('hidden', this.value !== 'custom')">
+                            <option value="instant">Send Now (Instant)</option>
+                            <option value="custom">Set Custom Send Timer</option>
+                        </select>
+                        <div id="customDeliveryTime" class="hidden" style="margin-top: 10px;">
+                            <label style="font-size: 0.9em; margin-bottom: 5px;">When should the invitation be sent?</label>
+                            <div class="flex-row">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <input type="date" id="delayDate">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div class="time-picker-custom">
+                                        <select id="delayHour"></select>
+                                        <span class="time-sep">:</span>
+                                        <select id="delayMinute"></select>
+                                        <select id="delayAmpm">
+                                            <option value="AM">AM</option>
+                                            <option value="PM">PM</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-footer wizard-footer">
