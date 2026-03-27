@@ -51,6 +51,16 @@ def init_db():
         pass # Column already exists
         
     try:
+        cursor.execute("ALTER TABLE participants ADD COLUMN followup_count INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
+        cursor.execute("ALTER TABLE participants ADD COLUMN last_followup_time TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass
+        
+    try:
         cursor.execute("ALTER TABLE meetings ADD COLUMN scheduled_send_time TIMESTAMP")
     except sqlite3.OperationalError:
         pass # Column already exists
@@ -84,11 +94,12 @@ def create_meeting_db(event_id, title, date, time, meet_link, agenda, participan
     cursor = conn.cursor()
     
     try:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         # Insert meeting
         cursor.execute('''
-            INSERT INTO meetings (event_id, title, date, time, meet_link, agenda, send_status, scheduled_send_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (event_id, title, date, time, meet_link, agenda, kwargs.get("send_status", "sent"), kwargs.get("scheduled_send_time")))
+            INSERT INTO meetings (event_id, title, date, time, meet_link, agenda, send_status, scheduled_send_time, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (event_id, title, date, time, meet_link, agenda, kwargs.get("send_status", "sent"), kwargs.get("scheduled_send_time"), now_str))
         
         meeting_id = cursor.lastrowid
         
@@ -286,6 +297,76 @@ def update_meeting_sent(meeting_id, event_id, meet_link):
         SET send_status = 'sent', event_id = ?, meet_link = ? 
         WHERE id = ?
     ''', (event_id, meet_link, meeting_id))
+    conn.commit()
+    conn.close()
+
+from datetime import timedelta
+
+def get_pending_followups():
+    """Fetch participants who need a follow-up email."""
+    import sqlite3
+    conn = sqlite3.connect('scheduler.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    from datetime import datetime, timedelta
+    now_dt = datetime.now()
+    now_str = now_dt.strftime('%Y-%m-%d %H:%M')
+    
+    cursor.execute('''
+        SELECT p.id as participant_id, p.*, m.title, m.date, m.time, m.meet_link, m.agenda, m.created_at
+        FROM participants p
+        JOIN meetings m ON p.meeting_id = m.id
+        WHERE p.status = 'pending' 
+        AND p.followup_count < 3
+        AND m.send_status = 'sent'
+        AND m.date || ' ' || m.time >= ? 
+    ''', (now_str,))
+    
+    results = cursor.fetchall()
+    pending = []
+    
+    for r in results:
+        # Parse created_at safely
+        try:
+            created_at_raw = r['created_at']
+            if created_at_raw and len(created_at_raw) >= 19:
+                created_at_dt = datetime.strptime(created_at_raw[:19], '%Y-%m-%d %H:%M:%S')
+            else:
+                created_at_dt = now_dt
+        except:
+            created_at_dt = now_dt
+            
+        last_followup = None
+        if r['last_followup_time']:
+            try:
+                last_followup = datetime.strptime(r['last_followup_time'][:19], '%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+                
+        threshold = None
+        if r['followup_count'] == 0:
+            threshold = created_at_dt + timedelta(hours=2)
+        else:
+            if last_followup:
+                threshold = last_followup + timedelta(hours=24)
+                
+        if threshold and now_dt >= threshold:
+            pending.append(dict(r))
+            
+    conn.close()
+    return pending
+
+def increment_followup(participant_id):
+    """Increment the followup count and update the last_followup_time."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute('''
+        UPDATE participants 
+        SET followup_count = followup_count + 1, last_followup_time = ? 
+        WHERE id = ?
+    ''', (now_str, participant_id))
     conn.commit()
     conn.close()
 

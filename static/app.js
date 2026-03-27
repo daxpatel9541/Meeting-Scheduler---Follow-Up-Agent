@@ -515,18 +515,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const m = data.meeting;
         const p = data.participants;
         document.getElementById('detailBody').innerHTML = `
-            <div class="detail-section">
-                <p><strong>Title:</strong> ${m.title}</p>
-                <p><strong>Date & Time:</strong> ${m.date} at ${formatTime(m.time)}</p>
-                <p><strong>Agenda:</strong></p>
-                <div class="agenda-box">${m.agenda.replace(/\n/g, '<br>')}</div>
+            <div class="detail-section" style="margin-bottom: 20px;">
+                <p style="margin: 5px 0;"><strong>Title:</strong> ${m.title}</p>
+                <p style="margin: 5px 0;"><strong>Date & Time:</strong> ${m.date} at ${formatTime(m.time)}</p>
+                <p style="margin: 5px 0; margin-top: 15px;"><strong>Agenda:</strong></p>
+                <div class="agenda-box" style="background: var(--bg-lighter); padding: 10px; border-radius: 8px; font-size: 0.9em; max-height: 100px; overflow-y: auto;">
+                    ${m.agenda.replace(/\n/g, '<br>')}
+                </div>
             </div>
-            <h3>Participants</h3>
-            <div class="participant-list">
+            <h3 style="font-size: 1.1em; color: var(--primary-light); margin-bottom: 15px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Participants Status</h3>
+            <div class="participant-list" style="display: flex; flex-direction: column; gap: 10px;">
                 ${p.map(part => `
-                    <div class="participant-item">
-                        <span>${part.name} (${part.email})</span>
-                        <span class="status-badge ${part.status}">${part.status.toUpperCase()}</span>
+                    <div class="participant-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); padding: 12px 15px; border-radius: 8px; border: 1px solid var(--border-color);">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <span style="font-size: 1.05em; font-weight: 500;">${part.name} <span style="font-size: 0.9em; color: var(--text-muted); font-weight: normal;">(${part.email})</span></span>
+                            <span style="font-size: 0.85em; color: var(--text-muted);">
+                                <i class="fas fa-paper-plane" style="color: var(--primary-color);"></i> Follow-ups Sent: <strong>${part.followup_count || 0}/3</strong> 
+                                ${part.last_followup_time ? `(Last: ${part.last_followup_time.split(' ')[1].slice(0,5)})` : ''}
+                            </span>
+                        </div>
+                        <span class="status-badge ${part.status}" style="padding: 6px 12px; font-size: 0.8em;">${part.status.toUpperCase()}</span>
                     </div>
                 `).join('')}
             </div>

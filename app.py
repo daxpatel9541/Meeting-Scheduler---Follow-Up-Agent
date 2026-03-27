@@ -11,6 +11,7 @@ from email.mime.text import MIMEText
 import database
 import llm
 import calendar_tool
+import followup
 from auth import get_calendar_service, get_gmail_service
 
 # Load environment variables
@@ -107,7 +108,39 @@ def process_scheduled_emails():
             
         time.sleep(60) # Check every 60 seconds
 
+def process_followups():
+    """Background thread to process pending follow-ups."""
+    # Wait a bit before starting so server loads
+    time.sleep(10)
+    while True:
+        try:
+            pending_participants = database.get_pending_followups()
+            if pending_participants:
+                gmail_service = get_gmail_service()
+                for p in pending_participants:
+                    # Construct meeting dict expected by send_followup_email
+                    meeting_data = {
+                        "email": p["email"],
+                        "name": p["name"],
+                        "date": p["date"],
+                        "time": p["time"],
+                        "meet_link": p["meet_link"],
+                        "agenda": p["agenda"],
+                        "title": p.get("title", "Meeting")
+                    }
+                    
+                    print(f"[FOLLOWUP] Sending followup #{p['followup_count'] + 1} to {p['email']}")
+                    success = followup.send_followup_email(gmail_service, meeting_data, p['followup_count'] + 1)
+                    if success:
+                        database.increment_followup(p["participant_id"])
+                        print(f"[FOLLOWUP] Successfully tracked followup for {p['email']}")
+        except Exception as e:
+            print(f"[FOLLOWUP] Error in background loop: {e}")
+            
+        time.sleep(60 * 30) # Check every 30 minutes
+
 threading.Thread(target=process_scheduled_emails, daemon=True).start()
+threading.Thread(target=process_followups, daemon=True).start()
 
 # --- API Routes ---
 
